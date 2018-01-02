@@ -34,7 +34,7 @@ int ptrace_memcpy(pid_t pid, void *dest, const void *src, size_t n) {
   while (n >= sizeof(long)) {
     memcpy(&value, s, sizeof(value));
 
-    if (ptrace(PTRACE_POKETEXT, pid, d, value) == -1) {
+    if (ptrace(PTRACE_POKETEXT, pid, dest, value) == -1) {
       printf("%d\n",pid);
       return -1;
     }

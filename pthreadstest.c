@@ -21,21 +21,45 @@ struct mem_arg {
 
 int pid;
 
-int ptrace_memcpy(pid_t pid, void *dest, const void *src, size_t n) {
+static void *checkthread(void *arg) {
+  struct mem_arg *marg = (struct mem_arg *)arg;
+
+  struct stat st;
+  int i;
+  char *newdata = malloc(marg->patch_size);
+  for (i = 0; i< 1000 && !marg->stop;i++) {
+    int f = open(marg->fname, O_RDONLY);
+    read (f, newdata, marg->patch_size);
+    close(f);
+
+    printf("%s\n",newdata);
+    printf("%s\n",(char*)marg->patch);
+
+
+    int cmp = memcmp(newdata, marg->patch, marg->patch_size);
+    printf("fdafdaf %d\n",cmp);
+    if (cmp == 0) {
+      marg->stop = 1;
+      marg->success = 1;
+    }
+    usleep(100000);
+  }
+}
+
+static int ptrace_memcpy(pid_t pid, void *dest, const void *src, size_t n) {
   const unsigned char *s;
   unsigned long value;
   unsigned char *d;
 
   d = dest;
   s = src;
-  printf("GNAK!\n");
-  //printf("%ld",(long)d);
 
   while (n >= sizeof(long)) {
     memcpy(&value, s, sizeof(value));
 
+    errno = 0;
     if (ptrace(PTRACE_POKETEXT, pid, dest, value) == -1) {
-      printf("%d\n",pid);
+      printf("pof %d\n",errno);
       return -1;
     }
 
@@ -47,7 +71,6 @@ int ptrace_memcpy(pid_t pid, void *dest, const void *src, size_t n) {
 
   if (n > 0) {
     d -= sizeof(long) -n;
-
     errno = 0;
     value = ptrace(PTRACE_PEEKTEXT, pid, d, NULL);
     if (value = -1 && errno != 0) {
@@ -62,7 +85,7 @@ int ptrace_memcpy(pid_t pid, void *dest, const void *src, size_t n) {
   return 0;
 }
 
-void *ptracethread(void *arg) {
+static void *ptracethread(void *arg) {
   struct mem_arg *marg = (struct mem_arg *)arg;
 
   int i,c;
@@ -85,8 +108,6 @@ static void *madvthread(void *arg) {
   marg->stop = 1;
 
   printf("%d\n", c);
-
-  printf("KYKELIKYYYY\n");
 }
 
 int main(int argc, const char *argv[]) {
@@ -106,17 +127,18 @@ int main(int argc, const char *argv[]) {
   fstat(f, &st);
   fstat(f2, &st2);
 
-  size_t size = st2.st_size;
+  size_t size = st.st_size;
 
   (*marg).patch = malloc(size);
   (*marg).patch_size = size;
 
   (*marg).fname = argv[2];
 
-  read(f2,(*marg).patch, size);
-  close(f2);
+  read(f,(*marg).patch, size);
+  close(f);
+  printf("%s\n",(char*)marg->patch);
 
-  void *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, f, 0);
+  void *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, f2, 0);
 
   if (map == MAP_FAILED) {
     printf("GOGLEA");
@@ -129,14 +151,15 @@ int main(int argc, const char *argv[]) {
   
   marg->stop = 0;
   marg->success = 0;
+  pthread_t pt1,pt2;
 
   pid = fork();
-  pthread_t pt1,pt2;
   if (pid) {
-    pthread_create(&pt1, NULL, ptracethread, marg);
+    pthread_create(&pt1, NULL, checkthread, marg);
     //printf("%ld\n",ptrace(PTRACE_ATTACH,pid));
     waitpid(pid,NULL,0);
-    printf("GONGGGGG\n");
+    printf("HGRAI\n");
+    ptracethread((void*)marg);
     pthread_join(pt1,NULL);
   } else {
     pthread_create(&pt2, NULL, madvthread, marg);
